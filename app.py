@@ -95,7 +95,7 @@ if url:
             info_dict = ydl.extract_info(url, download=True)
             title = info_dict.get('title', 'video')
             yt_id = info_dict.get('id')
-            downloaded_file = ydl.prepare_filename(info_dict)  # ✅ actual file name from yt-dlp
+            downloaded_file = ydl.prepare_filename(info_dict)  # ✅ actual file name
 
         st.success("✅ Download complete!")
 
@@ -105,7 +105,7 @@ if url:
         target_name = f"{safe_title}.{ext}"
 
         if os_choice == "Android":
-            downloads_path = f"/storage/shared/Downloads/{target_name}"
+            downloads_path = f"/storage/shared/Download/{target_name}"  # ✅ FIXED PATH
             try:
                 os.replace(downloaded_file, downloads_path)
                 st.success(f"📂 Saved to Android Downloads:\n{downloads_path}")
