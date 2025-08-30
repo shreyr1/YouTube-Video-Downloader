@@ -1,9 +1,9 @@
-
 import streamlit as st
 import yt_dlp
 import os
 import uuid
 import re
+from datetime import datetime
 
 st.set_page_config(page_title="YouTube Downloader", layout="centered")
 st.markdown("""
@@ -17,77 +17,84 @@ st.markdown("""
 </h1>
 """, unsafe_allow_html=True)
 
-
 url = st.text_input("Enter YouTube Video URL")
 
-# Predefine containers so layout doesn't jump
+# User choice: Video or Audio
+download_type = st.radio("Select download type", ["Video", "Audio"])
+
+start_time, end_time = None, None
+if download_type == "Audio":
+    st.info("Optional: Enter timestamps (HH:MM:SS format) to trim audio.")
+    start_time = st.text_input("Start Time (e.g., 00:01:30)", "")
+    end_time = st.text_input("End Time (e.g., 00:03:45)", "")
+
+# Loader placeholders
 loading_placeholder = st.empty()
 thumbnail_placeholder = st.empty()
 button_placeholder = st.empty()
 
-loader_css = """
-<style>
-.loader {
-    position: relative;
-    width: 108px;
-    height: 48px; /* Lock height to prevent layout jump */
-    display: flex;
-    justify-content: space-between;
-    margin: 30px auto;
-}
-.loader::after, .loader::before {
-    content: '';
-    display: inline-block;
-    width: 48px;
-    height: 48px;
-    background-color: #FFF;
-    background-image: radial-gradient(circle 14px, #0d161b 100%, transparent 0);
-    background-repeat: no-repeat;
-    border-radius: 50%;
-    animation: eyeMove 10s infinite, blink 10s infinite;
-    transform-origin: center;
-}
-@keyframes eyeMove {
-    0%, 10% { background-position: 0px 0px; }
-    13%, 40% { background-position: -15px 0px; }
-    43%, 70% { background-position: 15px 0px; }
-    73%, 90% { background-position: 0px 15px; }
-    93%, 100% { background-position: 0px 0px; }
-}
-@keyframes blink {
-    0%, 10%, 12%, 20%, 22%, 40%, 42%, 60%, 62%, 70%, 72%, 90%, 92%, 98%, 100% {
-        transform: scaleY(1);
-    }
-    11%, 21%, 41%, 61%, 71%, 91%, 99% {
-        transform: scaleY(0.4); /* Simulate blinking without changing height */
-    }
-}
-</style>
-"""
-
-
+loader_css = """<style> ... </style>"""  # keep your CSS
 loader_html = "<div class='loader'></div><p style='text-align:center;'>Your video is loading. This might take a moment...</p>"
 
-def extract_video_id(url):
-    """Extract video ID from various YouTube URL formats."""
-    regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
-    match = re.search(regex, url)
-    return match.group(1) if match else None
+def validate_time_format(t: str) -> bool:
+    """Check if string matches HH:MM:SS format."""
+    if not t:
+        return True  # empty is allowed
+    try:
+        datetime.strptime(t, "%H:%M:%S")
+        return True
+    except ValueError:
+        return False
+
+def convert_to_seconds(t: str) -> int:
+    """Convert HH:MM:SS to seconds."""
+    if not t:
+        return None
+    h, m, s = map(int, t.split(":"))
+    return h * 3600 + m * 60 + s
 
 if url:
-    # Show loader immediately
+    # Validate timestamps if audio mode
+    if download_type == "Audio":
+        if not validate_time_format(start_time):
+            st.error("❌ Invalid Start Time format. Use HH:MM:SS (e.g., 00:01:30).")
+            st.stop()
+        if not validate_time_format(end_time):
+            st.error("❌ Invalid End Time format. Use HH:MM:SS (e.g., 00:03:45).")
+            st.stop()
+
     loading_placeholder.markdown(loader_css + loader_html, unsafe_allow_html=True)
 
-    video_id = str(uuid.uuid4())
-    output_path = f"{video_id}.mp4"
+    file_id = str(uuid.uuid4())
+    output_path = f"{file_id}.%(ext)s"
 
-    ydl_opts = {
-    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-    'outtmpl': output_path,
-    'merge_output_format': 'mp4',
-    'quiet': True,
-}
+    if download_type == "Video":
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+            'outtmpl': output_path,
+            'merge_output_format': 'mp4',
+            'quiet': True,
+        }
+    else:  # Audio
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': output_path,
+            'quiet': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
 
+        # Handle timestamps
+        if start_time or end_time:
+            start_sec = convert_to_seconds(start_time)
+            end_sec = convert_to_seconds(end_time)
+            ydl_opts['download_ranges'] = lambda info: [{
+                'start_time': start_sec if start_sec else 0,
+                'end_time': end_sec if end_sec else None
+            }]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -95,26 +102,27 @@ if url:
             title = info_dict.get('title', 'video')
             yt_id = info_dict.get('id', None)
 
-        # Clean up loader once video is ready
         loading_placeholder.empty()
-
         st.success("✅ Download complete!")
 
-        # Show thumbnail
+        # Thumbnail for video/audio
         if yt_id:
             thumbnail_url = f"https://img.youtube.com/vi/{yt_id}/maxresdefault.jpg"
             thumbnail_placeholder.image(thumbnail_url, use_container_width=True)
 
-        # Show download button
-        with open(output_path, "rb") as file:
+        # Detect extension
+        ext = "mp4" if download_type == "Video" else "mp3"
+        final_file = f"{file_id}.{ext}"
+
+        with open(final_file, "rb") as file:
             button_placeholder.download_button(
-                label="📥 Download Video",
+                label=f"📥 Download {download_type}",
                 data=file,
-                file_name=f"{title}.mp4",
-                mime="video/mp4"
+                file_name=f"{title}.{ext}",
+                mime="audio/mpeg" if ext == "mp3" else "video/mp4"
             )
 
-        os.remove(output_path)
+        os.remove(final_file)
 
     except Exception as e:
         loading_placeholder.empty()
