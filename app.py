@@ -33,7 +33,43 @@ loading_placeholder = st.empty()
 thumbnail_placeholder = st.empty()
 button_placeholder = st.empty()
 
-loader_css = """<style> ... </style>"""  # keep your CSS
+loader_css = """<style>
+.loader {
+    position: relative;
+    width: 108px;
+    height: 48px;
+    display: flex;
+    justify-content: space-between;
+    margin: 30px auto;
+}
+.loader::after, .loader::before {
+    content: '';
+    display: inline-block;
+    width: 48px;
+    height: 48px;
+    background-color: #FFF;
+    background-image: radial-gradient(circle 14px, #0d161b 100%, transparent 0);
+    background-repeat: no-repeat;
+    border-radius: 50%;
+    animation: eyeMove 10s infinite, blink 10s infinite;
+    transform-origin: center;
+}
+@keyframes eyeMove {
+    0%, 10% { background-position: 0px 0px; }
+    13%, 40% { background-position: -15px 0px; }
+    43%, 70% { background-position: 15px 0px; }
+    73%, 90% { background-position: 0px 15px; }
+    93%, 100% { background-position: 0px 0px; }
+}
+@keyframes blink {
+    0%, 10%, 12%, 20%, 22%, 40%, 42%, 60%, 62%, 70%, 72%, 90%, 92%, 98%, 100% {
+        transform: scaleY(1);
+    }
+    11%, 21%, 41%, 61%, 71%, 91%, 99% {
+        transform: scaleY(0.4);
+    }
+}
+</style>"""
 loader_html = "<div class='loader'></div><p style='text-align:center;'>Your video is loading. This might take a moment...</p>"
 
 def validate_time_format(t: str) -> bool:
@@ -63,6 +99,14 @@ if url:
             st.error("❌ Invalid End Time format. Use HH:MM:SS (e.g., 00:03:45).")
             st.stop()
 
+        # Check ordering
+        if start_time and end_time:
+            start_sec = convert_to_seconds(start_time)
+            end_sec = convert_to_seconds(end_time)
+            if end_sec <= start_sec:
+                st.error("❌ End time must be greater than Start time.")
+                st.stop()
+
     loading_placeholder.markdown(loader_css + loader_html, unsafe_allow_html=True)
 
     file_id = str(uuid.uuid4())
@@ -91,7 +135,7 @@ if url:
         if start_time or end_time:
             start_sec = convert_to_seconds(start_time)
             end_sec = convert_to_seconds(end_time)
-            ydl_opts['download_ranges'] = lambda info: [{
+            ydl_opts['download_ranges'] = lambda info_dict, ydl: [{
                 'start_time': start_sec if start_sec else 0,
                 'end_time': end_sec if end_sec else None
             }]
