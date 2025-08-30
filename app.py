@@ -4,6 +4,7 @@ import os
 import uuid
 import re
 from datetime import datetime
+from pathlib import Path
 
 st.set_page_config(page_title="YouTube Downloader", layout="centered")
 st.markdown("""
@@ -19,6 +20,9 @@ st.markdown("""
 
 url = st.text_input("Enter YouTube Video URL")
 
+# User choice: Windows or Android
+os_choice = st.radio("Select your OS", ["Windows", "Android"])
+
 # User choice: Video or Audio
 download_type = st.radio("Select download type", ["Video", "Audio"])
 
@@ -33,49 +37,12 @@ loading_placeholder = st.empty()
 thumbnail_placeholder = st.empty()
 button_placeholder = st.empty()
 
-loader_css = """<style>
-.loader {
-    position: relative;
-    width: 108px;
-    height: 48px;
-    display: flex;
-    justify-content: space-between;
-    margin: 30px auto;
-}
-.loader::after, .loader::before {
-    content: '';
-    display: inline-block;
-    width: 48px;
-    height: 48px;
-    background-color: #FFF;
-    background-image: radial-gradient(circle 14px, #0d161b 100%, transparent 0);
-    background-repeat: no-repeat;
-    border-radius: 50%;
-    animation: eyeMove 10s infinite, blink 10s infinite;
-    transform-origin: center;
-}
-@keyframes eyeMove {
-    0%, 10% { background-position: 0px 0px; }
-    13%, 40% { background-position: -15px 0px; }
-    43%, 70% { background-position: 15px 0px; }
-    73%, 90% { background-position: 0px 15px; }
-    93%, 100% { background-position: 0px 0px; }
-}
-@keyframes blink {
-    0%, 10%, 12%, 20%, 22%, 40%, 42%, 60%, 62%, 70%, 72%, 90%, 92%, 98%, 100% {
-        transform: scaleY(1);
-    }
-    11%, 21%, 41%, 61%, 71%, 91%, 99% {
-        transform: scaleY(0.4);
-    }
-}
-</style>"""
+loader_css = """<style> ... </style>"""  # keep your loader CSS
 loader_html = "<div class='loader'></div><p style='text-align:center;'>Your video is loading. This might take a moment...</p>"
 
 def validate_time_format(t: str) -> bool:
-    """Check if string matches HH:MM:SS format."""
     if not t:
-        return True  # empty is allowed
+        return True
     try:
         datetime.strptime(t, "%H:%M:%S")
         return True
@@ -83,7 +50,6 @@ def validate_time_format(t: str) -> bool:
         return False
 
 def convert_to_seconds(t: str) -> int:
-    """Convert HH:MM:SS to seconds."""
     if not t:
         return None
     h, m, s = map(int, t.split(":"))
@@ -93,13 +59,12 @@ if url:
     # Validate timestamps if audio mode
     if download_type == "Audio":
         if not validate_time_format(start_time):
-            st.error("❌ Invalid Start Time format. Use HH:MM:SS (e.g., 00:01:30).")
+            st.error("❌ Invalid Start Time format. Use HH:MM:SS.")
             st.stop()
         if not validate_time_format(end_time):
-            st.error("❌ Invalid End Time format. Use HH:MM:SS (e.g., 00:03:45).")
+            st.error("❌ Invalid End Time format. Use HH:MM:SS.")
             st.stop()
 
-        # Check ordering
         if start_time and end_time:
             start_sec = convert_to_seconds(start_time)
             end_sec = convert_to_seconds(end_time)
@@ -119,7 +84,7 @@ if url:
             'merge_output_format': 'mp4',
             'quiet': True,
         }
-    else:  # Audio
+    else:
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': output_path,
@@ -130,8 +95,6 @@ if url:
                 'preferredquality': '192',
             }],
         }
-
-        # Handle timestamps
         if start_time or end_time:
             start_sec = convert_to_seconds(start_time)
             end_sec = convert_to_seconds(end_time)
@@ -149,15 +112,14 @@ if url:
         loading_placeholder.empty()
         st.success("✅ Download complete!")
 
-        # Thumbnail for video/audio
         if yt_id:
             thumbnail_url = f"https://img.youtube.com/vi/{yt_id}/maxresdefault.jpg"
             thumbnail_placeholder.image(thumbnail_url, use_container_width=True)
 
-        # Detect extension
         ext = "mp4" if download_type == "Video" else "mp3"
         final_file = f"{file_id}.{ext}"
 
+        # Download button
         with open(final_file, "rb") as file:
             button_placeholder.download_button(
                 label=f"📥 Download {download_type}",
@@ -166,7 +128,13 @@ if url:
                 mime="audio/mpeg" if ext == "mp3" else "video/mp4"
             )
 
-        os.remove(final_file)
+        # If OS is Android → also dump to Downloads
+        if os_choice == "Android":
+            downloads_path = str(Path.home() / "Downloads" / f"{title}.{ext}")
+            os.replace(final_file, downloads_path)
+            st.success(f"📂 Saved to Downloads: {downloads_path}")
+        else:
+            os.remove(final_file)
 
     except Exception as e:
         loading_placeholder.empty()
