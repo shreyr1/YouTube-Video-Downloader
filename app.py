@@ -17,13 +17,10 @@ st.markdown("""
 </h1>
 """, unsafe_allow_html=True)
 
+# User inputs
 url = st.text_input("Enter YouTube Video URL")
-
-# OS choice
-os_choice = st.radio("Select your OS", ["Windows", "Android"])
-
-# User choice: Video or Audio
 download_type = st.radio("Select download type", ["Video", "Audio"])
+os_choice = st.radio("Select your OS", ["Windows", "Android"])
 
 start_time, end_time = None, None
 if download_type == "Audio":
@@ -75,6 +72,7 @@ loader_css = """<style>
 </style>"""
 loader_html = "<div class='loader'></div><p style='text-align:center;'>Your video is loading. This might take a moment...</p>"
 
+# Helpers
 def validate_time_format(t: str) -> bool:
     if not t:
         return True
@@ -90,16 +88,20 @@ def convert_to_seconds(t: str) -> int:
     h, m, s = map(int, t.split(":"))
     return h * 3600 + m * 60 + s
 
+def sanitize_filename(name: str) -> str:
+    """Remove unsafe characters for file saving."""
+    return re.sub(r'[^a-zA-Z0-9\\-_\\. ]', '_', name)
+
+# Main logic
 if url:
-    # Validate timestamps if audio mode
+    # Timestamp validation
     if download_type == "Audio":
         if not validate_time_format(start_time):
-            st.error("❌ Invalid Start Time format. Use HH:MM:SS.")
+            st.error("❌ Invalid Start Time format. Use HH:MM:SS (e.g., 00:01:30).")
             st.stop()
         if not validate_time_format(end_time):
-            st.error("❌ Invalid End Time format. Use HH:MM:SS.")
+            st.error("❌ Invalid End Time format. Use HH:MM:SS (e.g., 00:03:45).")
             st.stop()
-
         if start_time and end_time:
             start_sec = convert_to_seconds(start_time)
             end_sec = convert_to_seconds(end_time)
@@ -112,6 +114,7 @@ if url:
     file_id = str(uuid.uuid4())
     output_path = f"{file_id}.%(ext)s"
 
+    # yt-dlp options
     if download_type == "Video":
         ydl_opts = {
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
@@ -151,27 +154,27 @@ if url:
             thumbnail_url = f"https://img.youtube.com/vi/{yt_id}/maxresdefault.jpg"
             thumbnail_placeholder.image(thumbnail_url, use_container_width=True)
 
+        # Final file name
         ext = "mp4" if download_type == "Video" else "mp3"
         final_file = f"{file_id}.{ext}"
+        safe_title = sanitize_filename(title)
+        target_name = f"{safe_title}.{ext}"
 
-        # Download button
-        with open(final_file, "rb") as file:
-            button_placeholder.download_button(
-                label=f"📥 Download {download_type}",
-                data=file,
-                file_name=f"{title}.{ext}",
-                mime="audio/mpeg" if ext == "mp3" else "video/mp4"
-            )
-
-        # If OS is Android → save in /storage/shared/Downloads
         if os_choice == "Android":
-            downloads_path = f"/storage/shared/Downloads/{title}.{ext}"
+            downloads_path = f"/storage/shared/Downloads/{target_name}"
             try:
                 os.replace(final_file, downloads_path)
                 st.success(f"📂 Saved to Android Downloads: {downloads_path}")
             except Exception as e:
                 st.error(f"❌ Could not move file to Downloads: {e}")
         else:
+            with open(final_file, "rb") as file:
+                button_placeholder.download_button(
+                    label=f"📥 Download {download_type}",
+                    data=file,
+                    file_name=target_name,
+                    mime="audio/mpeg" if ext == "mp3" else "video/mp4"
+                )
             os.remove(final_file)
 
     except Exception as e:
